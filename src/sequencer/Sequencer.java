@@ -1,3 +1,5 @@
+package sequencer;
+
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -73,8 +75,8 @@ public void run(){
 	try {
 		feSocket.receive(request);
 		String pack = new String(request.getData());
-		InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
-		String packFormat = "SEQ:"+ sequenceNumber + "\t FEAddr:" + FEAddr.getHostString() + "-" + FEAddr.getPort() + "\n" + pack;  
+		//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
+		String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack;  
 		sendPacket(packFormat, request);
 
 	    	
@@ -103,58 +105,60 @@ public void run(){
 			
 			switch(SequencerCommon.getMessageType(messa)){
 			
-			case "RESPOND" :{
-			
-				long seqNum = SequencerCommon.getSeqNum(messa);
+				case "RESPOND" :{
 				
-				BufferedPacket bpack = Buffered_Packets.get(seqNum);
+					long seqNum = SequencerCommon.getSeqNum(messa);
+					
+					BufferedPacket bpack = Buffered_Packets.get(seqNum);
+					
+					bpack.received++;
+				    String messaBody = SequencerCommon.getMessageBody(messa);
+				    if(bpack.packet != null){
+				    	
+				    	
+				    
+				    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
+				    
+				    InetSocketAddress feAddr = (InetSocketAddress) bpack.packet.getSocketAddress();
+				    messageSend.setSocketAddress(feAddr);
+				    
+				    feSocket.send(messageSend);
+				    }
+					if(bpack.received == bpack.multicasted)
+						Buffered_Packets.remove(seqNum);
+					break;
+				}
+				case "NACK": {	
+	                long seqNum = SequencerCommon.getSeqNum(messa);
+					
+					BufferedPacket n1 = Buffered_Packets.get(seqNum);
+					
+				    n1.timeStamp = System.currentTimeMillis();
+				    
+				    String pack = new String(n1.packet.getData());
+					//InetSocketAddress FEAddr = (InetSocketAddress) n1.packet.getSocketAddress();
+					String packFormat = "SEQ:"+ seqNum + "\t\n" + pack;  
+					DatagramPacket forwardRequest = new DatagramPacket(packFormat.getBytes(),packFormat.getBytes().length);
+				    forwardRequest.setSocketAddress(message.getSocketAddress());
+				    serverSocket.send(forwardRequest);
+				 break;   
+				}	
+				case "RMCTRL":	{
+					switch (SequencerCommon.getBodyMessageType(messa)) {
+					case "ADD_SERVER":
+						int serverID = SequencerCommon.getBodyServerID(messa);
+						InetSocketAddress serverAddr = (InetSocketAddress) message.getSocketAddress();
+						
+						SocketAddress.put(serverID, serverAddr);
+						
+						String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+						sendPacket(seqNum, null);
+						break;
+					}
 				
-				bpack.received++;
-			    String messaBody = SequencerCommon.getMessageBody(messa);
-			    if(bpack.packet != null){
-			    	
-			    	
-			    
-			    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
-			    
-			    InetSocketAddress feAddr = (InetSocketAddress) bpack.packet.getSocketAddress();
-			    messageSend.setSocketAddress(feAddr);
-			    
-			    feSocket.send(messageSend);
-			    }
-				if(bpack.received == bpack.multicasted)
-					Buffered_Packets.remove(seqNum);
-			break;
+					break;
+				}
 			}
-			case "NACK":
-			{	
-                long seqNum = SequencerCommon.getSeqNum(messa);
-				
-				BufferedPacket n1 = Buffered_Packets.get(seqNum);
-				
-			    n1.timeStamp = System.currentTimeMillis();
-			    
-			    String pack = new String(n1.packet.getData());
-				InetSocketAddress FEAddr = (InetSocketAddress) n1.packet.getSocketAddress();
-				String packFormat = "SEQ:"+ seqNum + "\t FEAddr:" + FEAddr.getHostString() + "-" + FEAddr.getPort() + "\n" + pack;  
-				DatagramPacket forwardRequest = new DatagramPacket(packFormat.getBytes(),packFormat.getBytes().length);
-			    forwardRequest.setSocketAddress(message.getSocketAddress());
-			    serverSocket.send(forwardRequest);
-			 break;   
-			}	
-			case "ADD_SERVER":
-				int serverID = SequencerCommon.getServerID(messa);
-				InetSocketAddress serverAddr = SequencerCommon.getServerSocketAddress(messa);
-				
-				SocketAddress.put(serverID, serverAddr);
-				
-				String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-				sendPacket(seqNum, null);
-				
-			}
-			
-			;
-			
 			
 			
 		} catch (IOException e) {
@@ -199,7 +203,7 @@ public void run(){
 
 
 	   SocketAddress A1 = new InetSocketAddress("localhost",2018);
-	   FE.sendPacket(A1,"Hello");
+	   FE.sendPacket(A1,"RESERVE\nHOTEL:H1\nGUESTID:123\nCHECKINDATE:20151201\nCHECKOUTDATE:20151205");
 	   String received1 = server1.receivePacket();
 	   String received2 = server2.receivePacket();
 	   String received3 = server3.receivePacket();
@@ -219,7 +223,7 @@ public void run(){
 	   System.out.println("Server received" + received2);
 	   System.out.println("Server received" + received3);
 	   
-	   String returnString = "SEQ:" + 0 +"\tFEAddr:IPAddress-port\tTYPE:RESPOND\tSERVERID:1\n FE Received!!!!";
+	   String returnString = "SEQ:" + 0 +"\tTYPE:RESPOND\t\nRESPOND\nRESID:225\n";
 	   server1.sendPacket(returnString);
 	   server2.sendPacket(returnString);
 	   server3.sendPacket(returnString);
@@ -228,8 +232,8 @@ public void run(){
 	   System.out.println("FE Received" + FE.receivePacket());
 	   System.out.println("FE Received" + FE.receivePacket());
 	   
-	   String returnStr = "SEQ:" + 1 +"\tFEAddr:IPAddress-port\tTYPE:NACK\tSERVERID:1\n!!!!";
-	   returnString = "SEQ:" + 1 +"\tFEAddr:IPAddress-port\tTYPE:RESPOND\tSERVERID:1\n FE Received!!!!";
+	   String returnStr = "SEQ:" + 1 + "\tTYPE:NACK\t\n";
+	   returnString = "SEQ:" + 1 +"\tTYPE:RESPOND\t\nRESPOND\nRESID:225\n";
 
 	   server1.sendPacket(returnString);
 	   server2.sendPacket(returnString);
@@ -238,15 +242,15 @@ public void run(){
 	   System.out.println("FE Received" + FE.receivePacket());
 	   System.out.println("Server Received" + server3.receivePacket());
 	   
-	   String addaddr = "FEAddr:localhost-5544\tTYPE:ADD_SERVER\tSERVERID:3\tSERVERADDR:127.0.0.1-3333\t\n";
+	   String addaddr = "TYPE:RMCTRL\t\nADD_SERVER\nSERVERID:3\n";
 	   server3 = new UDPEmulator(3333);
 
-	   server1.sendPacket(addaddr);
+	   server3.sendPacket( new InetSocketAddress ("localhost",2020), addaddr);
 	   System.out.println("Server Received" + server1.receivePacket());
 	   System.out.println("Server Received" + server2.receivePacket());
 
 	   System.out.println("Server Received" + server3.receivePacket());
-	   returnString = "SEQ:" + 2 +"\tFEAddr:IPAddress-port\tTYPE:RESPOND\tSERVERID:1\n FE Received!!!!";
+	   returnString = "SEQ:" + 2 +"\tTYPE:RESPOND\t\n";
 	   server1.sendPacket(returnString);
 	   server2.sendPacket(returnString);
 	   server3.sendPacket(returnString);
