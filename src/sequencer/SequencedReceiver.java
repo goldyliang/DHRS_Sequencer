@@ -122,7 +122,7 @@ public class SequencedReceiver implements Runnable {
 				}
 				
 			} catch (SocketException e) {
-				if (! e.toString().contains("Socket closed"))
+				if (! e.toString().toLowerCase().contains("socket closed"))
 					e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
