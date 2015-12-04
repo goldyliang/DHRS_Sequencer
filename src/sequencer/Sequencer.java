@@ -24,10 +24,12 @@ public class Sequencer{
 	private HashMap<Integer, InetSocketAddress> SocketAddress = new HashMap<Integer, InetSocketAddress>();
 	private class BufferedPacket{
 		
-		DatagramPacket packet;
+		DatagramPacket fwdPacket; // packet to be forwarded
 		long timeStamp;
 		int multicasted;
 		int received;
+		InetSocketAddress addrFE; // The FE address where the response shall be sent to. 
+		                          //  Null if no response to FE required
 	}
 
 	public Sequencer(int serverPortId, int fePortID){
@@ -74,10 +76,11 @@ public void run(){
 	DatagramPacket request = new DatagramPacket(buffer, buffer.length);
 	try {
 		feSocket.receive(request);
-		String pack = new String(request.getData());
+		String pack = new String(request.getData(), 0, request.getLength());
 		//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
-		String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack;  
-		sendPacket(packFormat, request);
+		String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
+		
+		sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat));
 
 	    	
 		
@@ -101,7 +104,7 @@ public void run(){
 			
 			serverSocket.receive(message);
 			
-			String messa = new String(message.getData());
+			String messa = new String(message.getData(), 0, message.getLength());
 			
 			switch(SequencerCommon.getMessageType(messa)){
 			
@@ -111,19 +114,20 @@ public void run(){
 					
 					BufferedPacket bpack = Buffered_Packets.get(seqNum);
 					
-					bpack.received++;
-				    String messaBody = SequencerCommon.getMessageBody(messa);
-				    if(bpack.packet != null){
+				    if (bpack.addrFE != null){
 				    	
-				    	
+					    String messaBody = SequencerCommon.getMessageBody(messa);
+
+					    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
+					    
+					    messageSend.setSocketAddress(bpack.addrFE);
+					    
+					    feSocket.send(messageSend);
 				    
-				    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
-				    
-				    InetSocketAddress feAddr = (InetSocketAddress) bpack.packet.getSocketAddress();
-				    messageSend.setSocketAddress(feAddr);
-				    
-				    feSocket.send(messageSend);
 				    }
+				    
+					bpack.received++;
+
 					if(bpack.received == bpack.multicasted)
 						Buffered_Packets.remove(seqNum);
 					break;
@@ -133,14 +137,13 @@ public void run(){
 					
 					BufferedPacket n1 = Buffered_Packets.get(seqNum);
 					
-				    n1.timeStamp = System.currentTimeMillis();
-				    
-				    String pack = new String(n1.packet.getData());
-					//InetSocketAddress FEAddr = (InetSocketAddress) n1.packet.getSocketAddress();
-					String packFormat = "SEQ:"+ seqNum + "\t\n" + pack;  
-					DatagramPacket forwardRequest = new DatagramPacket(packFormat.getBytes(),packFormat.getBytes().length);
-				    forwardRequest.setSocketAddress(message.getSocketAddress());
-				    serverSocket.send(forwardRequest);
+					if (n1!=null) {
+					
+					    n1.timeStamp = System.currentTimeMillis();
+					    
+						DatagramPacket forwardRequest = n1.fwdPacket;
+					    serverSocket.send(forwardRequest);
+					}
 				 break;   
 				}	
 				case "RMCTRL":	{
@@ -152,7 +155,7 @@ public void run(){
 						SocketAddress.put(serverID, serverAddr);
 						
 						String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-						sendPacket(seqNum, null);
+						sendPacket(seqNum, message , false);
 						break;
 					}
 				
@@ -171,14 +174,23 @@ public void run(){
 	
    }
    
-   public void sendPacket(String packet, DatagramPacket pack) throws IOException{
+   // String: packet to send
+   // pack: original received packet
+   // rspToFE: whether respond to FE is required
+   public void sendPacket(String packet, DatagramPacket pack, boolean rspToFE) throws IOException{
 	   
 		DatagramPacket forwardRequest = new DatagramPacket(packet.getBytes(),packet.getBytes().length);
 		BufferedPacket n1 = new BufferedPacket();
-		n1.packet = pack;
+		n1.fwdPacket = forwardRequest;
 	    n1.timeStamp = System.currentTimeMillis();
 	    n1.received =0;
 	    n1.multicasted = 0;
+	    
+	    if (rspToFE)
+	    	n1.addrFE = (InetSocketAddress)pack.getSocketAddress();
+	    else
+	    	n1.addrFE = null;
+	    
 	    Buffered_Packets.put(sequenceNumber, n1);
 	    sequenceNumber++;
 	    for(InetSocketAddress i : SocketAddress.values()){
@@ -191,12 +203,15 @@ public void run(){
    public static void main(String[] args) throws IOException{
 	   
 	   Sequencer s1 = new Sequencer(2020,2018);
-	   UDPEmulator FE = new UDPEmulator(2021);
+
+
+	   s1.startSequencer();
+	   
+/*	   UDPEmulator FE = new UDPEmulator(2021);
 	   UDPEmulator server1 = new UDPEmulator(2022);
 	   UDPEmulator server2 = new UDPEmulator(2023);
 	   UDPEmulator server3 = new UDPEmulator(2024);
-
-	   s1.startSequencer();
+	   
 	   s1.addMulticastSocketAddress(new InetSocketAddress("localhost",2022),1);
 	   s1.addMulticastSocketAddress(new InetSocketAddress("localhost",2023),2);
 	   s1.addMulticastSocketAddress(new InetSocketAddress("localhost",2024),3);
@@ -253,7 +268,7 @@ public void run(){
 	   returnString = "SEQ:" + 2 +"\tTYPE:RESPOND\t\n";
 	   server1.sendPacket(returnString);
 	   server2.sendPacket(returnString);
-	   server3.sendPacket(returnString);
+	   server3.sendPacket(returnString); */
 
    }
 

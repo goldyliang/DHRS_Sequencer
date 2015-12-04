@@ -178,6 +178,19 @@ public abstract class SequencerCommon {
     	String type = content.substring(0, i);
     	return type;
     }
+    
+    // whether it is required to send back respond to FE
+    // Not ideal solution, though
+    public static boolean ackToFERequired (String message) {
+    	String bodyMsgType = getBodyMessageType (message);
+    	
+    	// If the message is "REPORT_SUSPECTED_RESPOND", or "REPORT_NO_RESPOND",
+    	// Do not send back to FE
+    	if (bodyMsgType.indexOf("REPORT_") >= 0)
+    		return false;
+    	else
+    		return true;
+    }
 
     public static int getBodyServerID (String message) {
     	String content = message.substring(message.indexOf("\n")+1);

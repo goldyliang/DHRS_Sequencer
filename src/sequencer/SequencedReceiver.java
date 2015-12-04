@@ -50,7 +50,7 @@ public class SequencedReceiver implements Runnable {
     
     private void sendRespond (String header, String response) {
     	
-    	String msg = header + "\n" + response;
+    	String msg = header + "\tTYPE:RESPOND\t\n" + response;
     	byte[] buf = msg.getBytes();
     	
     	try {
