@@ -76,7 +76,10 @@ public void run(){
 	DatagramPacket request = new DatagramPacket(buffer, buffer.length);
 	try {
 		feSocket.receive(request);
+
 		String pack = new String(request.getData(), 0, request.getLength());
+	    System.out.println(pack);
+
 		//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
 		String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
 		
@@ -103,9 +106,10 @@ public void run(){
 		try {
 			
 			serverSocket.receive(message);
-			
+
 			String messa = new String(message.getData(), 0, message.getLength());
-			
+		    System.out.println("Respond Handle Thread " + messa);
+
 			switch(SequencerCommon.getMessageType(messa)){
 			
 				case "RESPOND" :{
@@ -123,7 +127,8 @@ public void run(){
 					    messageSend.setSocketAddress(bpack.addrFE);
 					    
 					    feSocket.send(messageSend);
-				    
+					    System.out.println("sending Respond " + messa);
+
 				    }
 				    
 					bpack.received++;
@@ -143,6 +148,7 @@ public void run(){
 					    
 						DatagramPacket forwardRequest = n1.fwdPacket;
 					    serverSocket.send(forwardRequest);
+					    System.out.println("sending nack!!!" + messa);
 					}
 				 break;   
 				}	
@@ -155,12 +161,20 @@ public void run(){
 						SocketAddress.put(serverID, serverAddr);
 
 						break;
+						
+					case "RMV_SERVER":
+					  int serverID1 = SequencerCommon.getBodyServerID(messa);
+					  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
+					
+					  SocketAddress.remove(serverID1, serverAddr1);
+					
 					}
+			  		
 					
 					// for all RMCTRL messages need to multi-cast to all servers
 					String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
 					sendPacket(seqNum, message , false);
-				
+				   
 					break;
 				}
 			}
@@ -200,10 +214,11 @@ public void run(){
 	        forwardRequest.setSocketAddress(i);
 	        serverSocket.send(forwardRequest);
 	        n1.multicasted++;
+	        System.out.println(" sending" + forwardRequest );
 	    }
    }
    public static void main(String[] args) throws IOException{
-	   
+	   //2020 Server, 2018 FE
 	   Sequencer s1 = new Sequencer(2020,2018);
 
 
