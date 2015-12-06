@@ -32,6 +32,7 @@ public class SequencedReceiver implements Runnable {
 			public void run() {
 				long seqNum = SequencerCommon.getSeqNum (header);
 		        String response;
+		        String resHeader = "SEQ:" + seqNum + "\t" + "TYPE:RESPOND\t";
 		        
 		        // Synchronize handling packet
 		        // with the operation of sendRMControlMsg
@@ -41,7 +42,7 @@ public class SequencedReceiver implements Runnable {
 		        // This logic is specially needed for testing
 		        synchronized (handleLock) {
 		        	response = handler.handlePacket (seqNum, request);
-			        sendRespond (header, response);
+			        sendRespond (resHeader, response);
 		        }
 			}
     	}.start();
