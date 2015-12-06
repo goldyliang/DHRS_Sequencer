@@ -153,11 +153,13 @@ public void run(){
 						InetSocketAddress serverAddr = (InetSocketAddress) message.getSocketAddress();
 						
 						SocketAddress.put(serverID, serverAddr);
-						
-						String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-						sendPacket(seqNum, message , false);
+
 						break;
 					}
+					
+					// for all RMCTRL messages need to multi-cast to all servers
+					String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+					sendPacket(seqNum, message , false);
 				
 					break;
 				}
