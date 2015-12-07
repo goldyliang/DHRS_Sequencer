@@ -76,14 +76,17 @@ public void run(){
 	DatagramPacket request = new DatagramPacket(buffer, buffer.length);
 	try {
 		feSocket.receive(request);
-
-		String pack = new String(request.getData(), 0, request.getLength());
-	    System.out.println(pack);
-
-		//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
-		String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
 		
-		sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat));
+		synchronized (this) {
+
+			String pack = new String(request.getData(), 0, request.getLength());
+		    System.out.println(pack);
+	
+			//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
+			String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
+			
+			sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat));
+		}
 
 	    	
 		
@@ -107,75 +110,77 @@ public void run(){
 			
 			serverSocket.receive(message);
 
-			String messa = new String(message.getData(), 0, message.getLength());
-		    System.out.println("Respond Handle Thread " + messa);
-
-			switch(SequencerCommon.getMessageType(messa)){
-			
-				case "RESPOND" :{
+			synchronized (this) {
+				String messa = new String(message.getData(), 0, message.getLength());
+			    System.out.println("Respond Handle Thread " + messa);
+	
+				switch(SequencerCommon.getMessageType(messa)){
 				
-					long seqNum = SequencerCommon.getSeqNum(messa);
+					case "RESPOND" :{
 					
-					BufferedPacket bpack = Buffered_Packets.get(seqNum);
-					
-				    if (bpack.addrFE != null){
-				    	
-					    String messaBody = SequencerCommon.getMessageBody(messa);
-
-					    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
-					    
-					    messageSend.setSocketAddress(bpack.addrFE);
-					    
-					    feSocket.send(messageSend);
-					    System.out.println("sending Respond " + messa);
-
-				    }
-				    
-					bpack.received++;
-
-					if(bpack.received == bpack.multicasted)
-						Buffered_Packets.remove(seqNum);
-					break;
-				}
-				case "NACK": {	
-	                long seqNum = SequencerCommon.getSeqNum(messa);
-					
-					BufferedPacket n1 = Buffered_Packets.get(seqNum);
-					
-					if (n1!=null) {
-					
-					    n1.timeStamp = System.currentTimeMillis();
-					    
-						DatagramPacket forwardRequest = n1.fwdPacket;
-					    serverSocket.send(forwardRequest);
-					    System.out.println("sending nack!!!" + messa);
-					}
-				 break;   
-				}	
-				case "RMCTRL":	{
-					switch (SequencerCommon.getBodyMessageType(messa)) {
-					case "ADD_SERVER":
-						int serverID = SequencerCommon.getBodyServerID(messa);
-						InetSocketAddress serverAddr = (InetSocketAddress) message.getSocketAddress();
+						long seqNum = SequencerCommon.getSeqNum(messa);
 						
-						SocketAddress.put(serverID, serverAddr);
-
+						BufferedPacket bpack = Buffered_Packets.get(seqNum);
+						
+					    if (bpack.addrFE != null){
+					    	
+						    String messaBody = SequencerCommon.getMessageBody(messa);
+	
+						    DatagramPacket messageSend = new DatagramPacket(messaBody.getBytes(), messaBody.getBytes().length);
+						    
+						    messageSend.setSocketAddress(bpack.addrFE);
+						    
+						    feSocket.send(messageSend);
+						    System.out.println("sending Respond " + messa);
+	
+					    }
+					    
+						bpack.received++;
+	
+						if(bpack.received == bpack.multicasted)
+							Buffered_Packets.remove(seqNum);
 						break;
-						
-					case "RMV_SERVER":
-					  int serverID1 = SequencerCommon.getBodyServerID(messa);
-					  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
-					
-					  SocketAddress.remove(serverID1, serverAddr1);
-					
 					}
-			  		
-					
-					// for all RMCTRL messages need to multi-cast to all servers
-					String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-					sendPacket(seqNum, message , false);
-				   
-					break;
+					case "NACK": {	
+		                long seqNum = SequencerCommon.getSeqNum(messa);
+						
+						BufferedPacket n1 = Buffered_Packets.get(seqNum);
+						
+						if (n1!=null) {
+						
+						    n1.timeStamp = System.currentTimeMillis();
+						    
+							DatagramPacket forwardRequest = n1.fwdPacket;
+						    serverSocket.send(forwardRequest);
+						    System.out.println("sending nack!!!" + messa);
+						}
+					 break;   
+					}	
+					case "RMCTRL":	{
+						// for all RMCTRL messages need to multi-cast to all servers
+						String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+						sendPacket(seqNum, message , false);
+						
+						switch (SequencerCommon.getBodyMessageType(messa)) {
+						case "ADD_SERVER":
+							int serverID = SequencerCommon.getBodyServerID(messa);
+							InetSocketAddress serverAddr = (InetSocketAddress) message.getSocketAddress();
+							
+							SocketAddress.put(serverID, serverAddr);
+	
+							break;
+							
+						case "RMV_SERVER":
+						  int serverID1 = SequencerCommon.getBodyServerID(messa);
+						  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
+						
+						  SocketAddress.remove(serverID1, serverAddr1);
+						
+						}
+				  		
+					   
+						break;
+					}
 				}
 			}
 			
@@ -214,7 +219,7 @@ public void run(){
 	        forwardRequest.setSocketAddress(i);
 	        serverSocket.send(forwardRequest);
 	        n1.multicasted++;
-	        System.out.println(" sending" + forwardRequest );
+	        System.out.println(" sending " + forwardRequest );
 	    }
    }
    public static void main(String[] args) throws IOException{
