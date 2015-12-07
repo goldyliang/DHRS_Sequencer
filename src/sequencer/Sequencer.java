@@ -158,8 +158,7 @@ public void run(){
 					}	
 					case "RMCTRL":	{
 						// for all RMCTRL messages need to multi-cast to all servers
-						String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-						sendPacket(seqNum, message , false);
+						
 						
 						switch (SequencerCommon.getBodyMessageType(messa)) {
 						case "ADD_SERVER":
@@ -167,10 +166,16 @@ public void run(){
 							InetSocketAddress serverAddr = (InetSocketAddress) message.getSocketAddress();
 							
 							SocketAddress.put(serverID, serverAddr);
-	
+							
+							String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+							sendPacket(seqNum, message , false);
 							break;
 							
 						case "RMV_SERVER":
+							
+						  seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+						  sendPacket(seqNum, message , false);
+						  
 						  int serverID1 = SequencerCommon.getBodyServerID(messa);
 						  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
 						
