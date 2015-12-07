@@ -85,7 +85,7 @@ public void run(){
 			//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
 			String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
 			
-			sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat));
+			sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat), null);
 		}
 
 	    	
@@ -168,18 +168,29 @@ public void run(){
 							SocketAddress.put(serverID, serverAddr);
 							
 							String seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-							sendPacket(seqNum, message , false);
+							sendPacket(seqNum, message , false, null);
 							break;
 							
 						case "RMV_SERVER":
 							
 						  seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
-						  sendPacket(seqNum, message , false);
+						  sendPacket(seqNum, message , false, null);
 						  
 						  int serverID1 = SequencerCommon.getBodyServerID(messa);
 						  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
 						
 						  SocketAddress.remove(serverID1, serverAddr1);
+						  break;
+						  
+						case "PAUSE":
+							break;
+							
+						default:
+							  
+							serverAddr = (InetSocketAddress) message.getSocketAddress();
+
+							seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+							sendPacket(seqNum, message , false, serverAddr);
 						
 						}
 				  		
@@ -203,7 +214,7 @@ public void run(){
    // String: packet to send
    // pack: original received packet
    // rspToFE: whether respond to FE is required
-   public void sendPacket(String packet, DatagramPacket pack, boolean rspToFE) throws IOException{
+   public void sendPacket(String packet, DatagramPacket pack, boolean rspToFE, InetSocketAddress additionalAddr) throws IOException{
 	   
 		DatagramPacket forwardRequest = new DatagramPacket(packet.getBytes(),packet.getBytes().length);
 		BufferedPacket n1 = new BufferedPacket();
@@ -219,13 +230,22 @@ public void run(){
 	    
 	    Buffered_Packets.put(sequenceNumber, n1);
 	    sequenceNumber++;
+	    
 	    for(InetSocketAddress i : SocketAddress.values()){
 	    	
 	        forwardRequest.setSocketAddress(i);
 	        serverSocket.send(forwardRequest);
 	        n1.multicasted++;
-	        System.out.println(" sending " + forwardRequest );
+	        System.out.println(" sending " + forwardRequest + " to: " + i.toString());
 	    }
+	    
+	    if (additionalAddr != null) {
+	        forwardRequest.setSocketAddress(additionalAddr);
+	        serverSocket.send(forwardRequest);
+	        n1.multicasted++;
+	        System.out.println(" sending " + forwardRequest + " to: " + additionalAddr.toString());
+	    }
+	    
    }
    public static void main(String[] args) throws IOException{
 	   //2020 Server, 2018 FE
