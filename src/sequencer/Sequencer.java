@@ -22,6 +22,8 @@ public class Sequencer{
 	private HashMap<Long,BufferedPacket > Buffered_Packets = new HashMap<Long, BufferedPacket>();
 	private long sequenceNumber; 
 	private HashMap<Integer, InetSocketAddress> SocketAddress = new HashMap<Integer, InetSocketAddress>();
+	
+	
 	private class BufferedPacket{
 		
 		DatagramPacket fwdPacket; // packet to be forwarded
@@ -179,7 +181,7 @@ public void run(){
 						  int serverID1 = SequencerCommon.getBodyServerID(messa);
 						  InetSocketAddress serverAddr1 = (InetSocketAddress) message.getSocketAddress();
 						
-						  SocketAddress.remove(serverID1, serverAddr1);
+						  SocketAddress.remove(serverID1);
 						  break;
 						  
 						case "PAUSE":
