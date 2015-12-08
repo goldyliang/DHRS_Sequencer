@@ -6,12 +6,18 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
 import java.util.StringTokenizer;
+import java.util.TreeMap;
 import java.net.SocketAddress;
 
 public class Sequencer{
+	
+	private static final long STALE_THREADSHOLD = 5000;
 	
 	private int serrverPortID;
 	private int fePortID;
@@ -19,10 +25,11 @@ public class Sequencer{
 	private Thread received;
 	private DatagramSocket serverSocket;
 	private DatagramSocket feSocket;
-	private HashMap<Long,BufferedPacket > Buffered_Packets = new HashMap<Long, BufferedPacket>();
+	private TreeMap <Long,BufferedPacket > Buffered_Packets = new TreeMap <Long, BufferedPacket>();
 	private long sequenceNumber; 
 	private HashMap<Integer, InetSocketAddress> SocketAddress = new HashMap<Integer, InetSocketAddress>();
 	
+	private boolean paused = false;
 	
 	private class BufferedPacket{
 		
@@ -38,7 +45,7 @@ public class Sequencer{
 		
 		this.serrverPortID = serverPortId;
 		this.fePortID = fePortID;
-		
+		paused = false;
 		
 	}
 	
@@ -66,7 +73,19 @@ public void startSequencer() throws IOException{
 	
       sequencer.start();
       received.start();
+      
+      paused = false;
 	
+}
+
+public void stopSequencer() {
+	
+	sequencer.interrupt();
+	received.interrupt();
+	
+	feSocket.close();
+	serverSocket.close();
+
 }
 
 
@@ -77,24 +96,31 @@ public void run(){
 	byte[] buffer = new byte[1000];
 	DatagramPacket request = new DatagramPacket(buffer, buffer.length);
 	try {
+		
 		feSocket.receive(request);
 		
-		synchronized (this) {
-
-			String pack = new String(request.getData(), 0, request.getLength());
-		    System.out.println(pack);
-	
-			//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
-			String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
+			synchronized (Sequencer.this) {
+				
+				if (!paused) {
+		
+					String pack = new String(request.getData(), 0, request.getLength());
+				    System.out.println(pack);
 			
-			sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat), null);
-		}
-
+					//InetSocketAddress FEAddr = (InetSocketAddress) request.getSocketAddress();
+					String packFormat = "SEQ:"+ sequenceNumber + "\t\n" + pack; 
+					
+					sendPacket(packFormat, request, SequencerCommon.ackToFERequired(packFormat), null);
+				}
+			}
 	    	
 		
-	} catch (IOException e) {
+	} catch (Exception e) {
 		// TODO Auto-generated catch block
-		e.printStackTrace();
+		if (e.getMessage().toLowerCase().indexOf("socket closed") < 0)
+			e.printStackTrace();
+		
+		if (feSocket.isClosed())
+			return;
 	}
 	
    }
@@ -112,7 +138,7 @@ public void run(){
 			
 			serverSocket.receive(message);
 
-			synchronized (this) {
+			synchronized (Sequencer.this) {
 				String messa = new String(message.getData(), 0, message.getLength());
 			    System.out.println("Respond Handle Thread " + messa);
 	
@@ -123,6 +149,10 @@ public void run(){
 						long seqNum = SequencerCommon.getSeqNum(messa);
 						
 						BufferedPacket bpack = Buffered_Packets.get(seqNum);
+						
+						if (bpack == null)
+							// old respond
+							break;
 						
 					    if (bpack.addrFE != null){
 					    	
@@ -139,8 +169,10 @@ public void run(){
 					    
 						bpack.received++;
 	
-						if(bpack.received == bpack.multicasted)
+						if(bpack.received == bpack.multicasted) {
+							System.out.println("Remove :" + seqNum);
 							Buffered_Packets.remove(seqNum);
+						}
 						break;
 					}
 					case "NACK": {	
@@ -153,8 +185,9 @@ public void run(){
 						    n1.timeStamp = System.currentTimeMillis();
 						    
 							DatagramPacket forwardRequest = n1.fwdPacket;
+							forwardRequest.setSocketAddress(message.getSocketAddress()); // send back
 						    serverSocket.send(forwardRequest);
-						    System.out.println("sending nack!!!" + messa);
+						    System.out.println("Resending for : " + messa);
 						}
 					 break;   
 					}	
@@ -185,6 +218,12 @@ public void run(){
 						  break;
 						  
 						case "PAUSE":
+							paused = true;
+							serverAddr = (InetSocketAddress) message.getSocketAddress();
+
+							seqNum =  "SEQ:" + sequenceNumber + "\t" + messa;
+							sendPacket(seqNum, message , false, serverAddr);
+							
 							break;
 							
 						default:
@@ -203,9 +242,13 @@ public void run(){
 			}
 			
 			
-		} catch (IOException e) {
+		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			if (e.getMessage().toLowerCase().indexOf("socket closed") < 0)
+				e.printStackTrace();
+			
+			if (serverSocket.isClosed())
+				return;
 		}
 		
 		}	
@@ -246,6 +289,31 @@ public void run(){
 	        serverSocket.send(forwardRequest);
 	        n1.multicasted++;
 	        System.out.println(" sending " + forwardRequest + " to: " + additionalAddr.toString());
+	    }
+	    
+	    // Check if there are stale requests that can be removed
+	    if (Buffered_Packets.size() > 10) {
+	    	// iterate all packets
+	    	
+	    	NavigableSet <Long> keySet = Buffered_Packets.navigableKeySet();
+	    		    	
+    		long time = System.currentTimeMillis();
+    		
+    		List<Long> toRemove = new ArrayList<Long>();
+    		
+	    	for (Long seqNum : keySet ) {
+	    		BufferedPacket p = Buffered_Packets.get(seqNum);
+	    		
+	    		// check the entry
+	    		if (time - p.timeStamp > STALE_THREADSHOLD)
+	    			toRemove.add(seqNum);
+	    	}
+	    	
+	    	for (Long seqNum : toRemove) {
+    			System.out.println("Stale remove:"+seqNum);
+    			Buffered_Packets.remove(seqNum);
+	    	}
+
 	    }
 	    
    }
